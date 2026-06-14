@@ -22,13 +22,16 @@ GitHub Actions (cron cada 30 min en horario de partidos)
 
 ## Fuente de datos
 
-Usa **openfootball/worldcup.json** (dominio público, gratis, SIN API key ni límites):
-`https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json`
+Usa el endpoint público del **scoreboard de ESPN** (gratis, SIN API key):
+`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=YYYYMMDD`
 
-El archivo se actualiza con los marcadores conforme avanza el torneo. El script
-descarga ese JSON, toma solo los 72 partidos de fase de grupos (ignora la fase
-final que aún tiene placeholders) y deduce el resultado de cada uno por el marcador
-final (`score.ft`).
+ESPN actualiza marcadores casi en vivo. El script recorre las fechas de la fase
+de grupos (11–27 jun 2026), junta todos los partidos, toma solo los 72 de grupos
+y deduce el resultado de cada uno (`status.type.completed` + `score`).
+
+Nota: es un endpoint no oficial de ESPN. Si algún día deja de responder, el script
+sale con error y NO sobreescribe el `index.html` bueno; mientras tanto puedes
+capturar a mano con el admin local.
 
 ## Archivos
 
@@ -64,13 +67,13 @@ Listo. A partir de ahí corre solo según el cron. **No necesitas ninguna API ke
 
 El script está hecho a prueba de fallos, pero revisa el log del Action si algo se ve raro:
 
-- **`AVISO — nombres de equipo no reconocidos`**: openfootball nombró a un equipo
-  distinto a lo previsto. Agrega ese nombre exacto al alias correcto en `teams.py`.
-- Si **openfootball no responde** (raro, pero pasa), el script sale con error y
-  **NO** sobreescribe el `index.html` bueno: la página se queda en el último estado válido.
-- openfootball a veces tarda unas horas en cargar el marcador final de un partido
-  recién jugado. Si un resultado no aparece de inmediato, dale tiempo o captúralo
-  a mano con el admin local mientras tanto.
+- **`AVISO — nombres de equipo no reconocidos`**: ESPN nombró a un equipo distinto
+  a lo previsto. Agrega ese nombre exacto al alias correcto en `teams.py`.
+- Si **ESPN no responde** en ninguna fecha, el script sale con error y **NO**
+  sobreescribe el `index.html` bueno: la página se queda en el último estado válido.
+- ESPN es un endpoint no oficial: si en algún momento cambian la URL o el formato,
+  el marcador dejaría de actualizarse. Mientras lo arreglas, captura a mano con el
+  admin local (`quiniela_ADMIN_jorge.html`).
 
 ## Respaldo manual
 Si un día la API no coopera, tu panel admin local (`quiniela_ADMIN_jorge.html`)
@@ -78,5 +81,5 @@ sigue sirviendo para capturar a mano y exportar. Cinturón y tirantes.
 
 ## Ajustar el horario del cron
 En `.github/workflows/quiniela.yml`. Está en UTC (CDMX = UTC-6). Ahorita corre cada
-30 min de 10:00 a 00:00 CDMX. La fuente (openfootball) es gratis y sin límite de
-llamadas, así que puedes correrlo tan seguido como quieras sin preocuparte por cuotas.
+30 min de 10:00 a 00:00 CDMX. ESPN es gratis y sin límite publicado; el script hace
+~17 llamadas por corrida (una por fecha de grupos), sin problema.
