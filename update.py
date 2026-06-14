@@ -27,11 +27,9 @@ import urllib.error
 from teams import code_for, NOMBRE
 from picks import MATCHES, PICKS, PEN, PLAYERS
 
-API_BASE = "https://v3.football.api-sports.io"
-LEAGUE_ID = 1        # FIFA World Cup en API-Football
-SEASON = 2026
-# estados que consideramos "partido terminado" según la doc de API-Football
-FINISHED = {"FT", "AET", "PEN"}
+# Fuente de datos: openfootball/worldcup.json — dominio público, gratis, SIN API key.
+# El archivo se va actualizando con los marcadores conforme avanza el torneo.
+DATA_URL = "https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json"
 
 OUT = os.path.join(os.path.dirname(__file__), "index.html")
 
@@ -40,27 +38,19 @@ def log(msg):
     print(msg, flush=True)
 
 
-def api_get(path):
-    key = os.environ.get("API_FOOTBALL_KEY")
-    if not key:
-        log("ERROR: falta la variable de entorno API_FOOTBALL_KEY (el secret del repo).")
-        sys.exit(1)
-    url = f"{API_BASE}{path}"
-    req = urllib.request.Request(url, headers={"x-apisports-key": key})
+def api_get():
+    """descarga el JSON del Mundial 2026 de openfootball y devuelve la lista de partidos."""
+    req = urllib.request.Request(DATA_URL, headers={"User-Agent": "quiniela-marcador"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             data = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        log(f"ERROR HTTP {e.code} al pedir {path}: {e.read()[:300]}")
+        log(f"ERROR HTTP {e.code} al descargar los datos: {e}")
         sys.exit(1)
     except Exception as e:
-        log(f"ERROR de red al pedir {path}: {e}")
+        log(f"ERROR de red al descargar los datos: {e}")
         sys.exit(1)
-    # API-Football mete los errores dentro del cuerpo, no en el status
-    if data.get("errors"):
-        log(f"ERROR de la API: {data['errors']}")
-        sys.exit(1)
-    return data.get("response", [])
+    return data.get("matches", [])
 
 
 def build_index():
@@ -76,57 +66,68 @@ def fetch_results():
     results = [""] * 72
     pos_by_pair = build_index()
 
-    fixtures = api_get(f"/fixtures?league={LEAGUE_ID}&season={SEASON}")
-    log(f"API devolvió {len(fixtures)} fixtures del Mundial.")
+    fixtures = api_get()
+    log(f"openfootball devolvió {len(fixtures)} partidos (incluye fase final aún por definir).")
 
     matched = 0
     finished = 0
     unknown_names = set()
 
     for fx in fixtures:
-        try:
-            home_name = fx["teams"]["home"]["name"]
-            away_name = fx["teams"]["away"]["name"]
-            status = fx["fixture"]["status"]["short"]
-            gh = fx["goals"]["home"]
-            ga = fx["goals"]["away"]
-        except (KeyError, TypeError):
+        home_name = fx.get("team1")
+        away_name = fx.get("team2")
+        if not home_name or not away_name:
             continue
 
         ch = code_for(home_name)
         ca = code_for(away_name)
-        if ch is None:
-            unknown_names.add(home_name)
-        if ca is None:
-            unknown_names.add(away_name)
+        # Los partidos de fase final traen placeholders tipo "1A", "W73": no los reconocemos
+        # a propósito y NO son de fase de grupos, así que se ignoran en silencio.
         if ch is None or ca is None:
+            # solo reportamos nombres "de verdad" (con letras), no los placeholders
+            for nm, code in ((home_name, ch), (away_name, ca)):
+                if code is None and not _is_placeholder(nm):
+                    unknown_names.add(nm)
             continue
 
         pos = pos_by_pair.get(frozenset((ch, ca)))
         if pos is None:
-            # un partido de ese par que no está en nuestra hoja (no debería pasar en grupos)
             continue
         matched += 1
 
-        if status not in FINISHED or gh is None or ga is None:
-            continue  # aún no termina: lo dejamos pendiente
+        # El partido terminó solo si trae score.ft con dos números
+        score = fx.get("score") or {}
+        ft = score.get("ft")
+        if not (isinstance(ft, list) and len(ft) == 2 and ft[0] is not None and ft[1] is not None):
+            continue  # aún no se juega o no hay marcador final
 
-        # ¿el equipo local de la API es el equipo local de NUESTRA hoja?
+        gh, ga = ft[0], ft[1]
+        # ¿el team1 de openfootball es el equipo local de NUESTRA hoja?
         m = MATCHES[pos]
         home_is_our_local = (ch == m[3])
         if gh == ga:
             results[pos] = "E"
         else:
-            api_home_wins = gh > ga
-            our_local_wins = api_home_wins if home_is_our_local else (not api_home_wins)
+            of_home_wins = gh > ga
+            our_local_wins = of_home_wins if home_is_our_local else (not of_home_wins)
             results[pos] = "1" if our_local_wins else "2"
         finished += 1
 
-    log(f"Casé {matched} de 72 partidos de la quiniela. Terminados con resultado: {finished}.")
+    log(f"Casé {matched} de 72 partidos de grupos. Terminados con resultado: {finished}.")
     if unknown_names:
         log("AVISO — nombres de equipo no reconocidos (revisa teams.py): "
             + ", ".join(sorted(unknown_names)))
     return results
+
+
+def _is_placeholder(name):
+    """True para los marcadores de posición de fase final: '1A', '2K', 'W73', 'L101', '3A/B/C/D/F'."""
+    n = name.strip()
+    if "/" in n:
+        return True
+    if len(n) <= 4 and any(c.isdigit() for c in n):
+        return True
+    return False
 
 
 def score(results):
@@ -142,7 +143,7 @@ def score(results):
 
 def render_html(results, rows, played):
     """genera el index.html completo, estático, con los datos ya incrustados."""
-    stamp = datetime.datetime.utcnow() - datetime.timedelta(hours=6)  # CDMX (UTC-6)
+    stamp = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=6)  # CDMX (UTC-6)
     stamp_str = stamp.strftime("%d/%m/%Y %H:%M") + " (hora CDMX)"
 
     data = {
