@@ -1,0 +1,49 @@
+name: Actualizar marcador quiniela
+
+# Cuándo corre:
+on:
+  schedule:
+    # Cron en UTC. CDMX = UTC-6. Corremos cada 30 min entre 16:00 y 06:00 UTC
+    # (= 10:00 a 00:00 hora CDMX), que cubre todos los horarios de partido.
+    - cron: "0,30 16-23 * * *"
+    - cron: "0,30 0-6 * * *"
+  workflow_dispatch:   # botón para correrlo manual desde la pestaña Actions
+
+# Permiso para que el Action pueda hacer commit del index.html actualizado
+permissions:
+  contents: write
+
+# Evita que dos corridas se encimen
+concurrency:
+  group: marcador
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar repo
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerar marcador
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: python update.py
+
+      - name: Commit si hubo cambios
+        run: |
+          git config user.name  "marcador-bot"
+          git config user.email "actions@github.com"
+          if [[ -n "$(git status --porcelain index.html)" ]]; then
+            git add index.html
+            git commit -m "Marcador actualizado: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+            echo "Marcador actualizado y publicado."
+          else
+            echo "Sin cambios en el marcador."
+          fi
