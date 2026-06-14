@@ -31,8 +31,6 @@ jobs:
           python-version: "3.12"
 
       - name: Regenerar marcador
-        env:
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python update.py
 
       - name: Commit si hubo cambios
