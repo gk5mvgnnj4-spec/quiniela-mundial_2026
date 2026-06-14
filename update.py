@@ -27,9 +27,11 @@ import urllib.error
 from teams import code_for, NOMBRE
 from picks import MATCHES, PICKS, PEN, PLAYERS
 
-# Fuente de datos: openfootball/worldcup.json — dominio público, gratis, SIN API key.
-# El archivo se va actualizando con los marcadores conforme avanza el torneo.
-DATA_URL = "https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json"
+# Fuente de datos: endpoint público (no oficial) del scoreboard de ESPN.
+# Gratis, sin API key. Devuelve los partidos POR FECHA, así que recorremos
+# todas las fechas de la fase de grupos (11 a 27 de junio de 2026).
+ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates={date}"
+GROUP_DATES = [f"202606{d:02d}" for d in range(11, 28)]  # 20260611 .. 20260627
 
 OUT = os.path.join(os.path.dirname(__file__), "index.html")
 
@@ -38,19 +40,33 @@ def log(msg):
     print(msg, flush=True)
 
 
-def api_get():
-    """descarga el JSON del Mundial 2026 de openfootball y devuelve la lista de partidos."""
-    req = urllib.request.Request(DATA_URL, headers={"User-Agent": "quiniela-marcador"})
+def fetch_day(date):
+    """descarga los partidos de ESPN para una fecha (YYYYMMDD). Devuelve [] si falla esa fecha."""
+    url = ESPN_URL.format(date=date)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 quiniela-marcador"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             data = json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        log(f"ERROR HTTP {e.code} al descargar los datos: {e}")
-        sys.exit(1)
     except Exception as e:
-        log(f"ERROR de red al descargar los datos: {e}")
+        log(f"  aviso: no se pudo leer la fecha {date}: {e}")
+        return []
+    return data.get("events", [])
+
+
+def get_all_events():
+    """junta los partidos de todas las fechas de la fase de grupos."""
+    all_events = []
+    ok_days = 0
+    for date in GROUP_DATES:
+        evs = fetch_day(date)
+        if evs:
+            ok_days += 1
+            all_events.extend(evs)
+    if ok_days == 0:
+        log("ERROR: ESPN no respondió en ninguna fecha. No se actualiza el marcador.")
         sys.exit(1)
-    return data.get("matches", [])
+    log(f"ESPN respondió {ok_days}/{len(GROUP_DATES)} fechas, {len(all_events)} partidos en total.")
+    return all_events
 
 
 def build_index():
@@ -66,50 +82,67 @@ def fetch_results():
     results = [""] * 72
     pos_by_pair = build_index()
 
-    fixtures = api_get()
-    log(f"openfootball devolvió {len(fixtures)} partidos (incluye fase final aún por definir).")
+    events = get_all_events()
 
     matched = 0
     finished = 0
     unknown_names = set()
+    seen_pos = set()  # evita doble conteo si una fecha se repite
 
-    for fx in fixtures:
-        home_name = fx.get("team1")
-        away_name = fx.get("team2")
+    for ev in events:
+        comp = (ev.get("competitions") or [{}])[0]
+        competitors = comp.get("competitors") or []
+        if len(competitors) != 2:
+            continue
+
+        # identifica local y visita según ESPN
+        home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+        away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+        if not home or not away:
+            continue
+
+        home_name = (home.get("team") or {}).get("displayName")
+        away_name = (away.get("team") or {}).get("displayName")
         if not home_name or not away_name:
             continue
 
         ch = code_for(home_name)
         ca = code_for(away_name)
-        # Los partidos de fase final traen placeholders tipo "1A", "W73": no los reconocemos
-        # a propósito y NO son de fase de grupos, así que se ignoran en silencio.
+        if ch is None:
+            unknown_names.add(home_name)
+        if ca is None:
+            unknown_names.add(away_name)
         if ch is None or ca is None:
-            # solo reportamos nombres "de verdad" (con letras), no los placeholders
-            for nm, code in ((home_name, ch), (away_name, ca)):
-                if code is None and not _is_placeholder(nm):
-                    unknown_names.add(nm)
             continue
 
         pos = pos_by_pair.get(frozenset((ch, ca)))
         if pos is None:
+            continue  # no es uno de los 72 de grupos (o es fase final)
+        if pos in seen_pos:
             continue
+        seen_pos.add(pos)
         matched += 1
 
-        # El partido terminó solo si trae score.ft con dos números
-        score = fx.get("score") or {}
-        ft = score.get("ft")
-        if not (isinstance(ft, list) and len(ft) == 2 and ft[0] is not None and ft[1] is not None):
-            continue  # aún no se juega o no hay marcador final
+        # ¿terminó? ESPN: status.type.completed == True
+        status = (comp.get("status") or {}).get("type") or {}
+        if not status.get("completed"):
+            continue
 
-        gh, ga = ft[0], ft[1]
-        # ¿el team1 de openfootball es el equipo local de NUESTRA hoja?
+        # marcador
+        try:
+            gh = int(home.get("score"))
+            ga = int(away.get("score"))
+        except (TypeError, ValueError):
+            continue
+
+        # ¿el local de ESPN es el local de NUESTRA hoja?
         m = MATCHES[pos]
         home_is_our_local = (ch == m[3])
         if gh == ga:
             results[pos] = "E"
         else:
-            of_home_wins = gh > ga
-            our_local_wins = of_home_wins if home_is_our_local else (not of_home_wins)
+            espn_home_wins = gh > ga
+            our_local_wins = espn_home_wins if home_is_our_local else (not espn_home_wins)
             results[pos] = "1" if our_local_wins else "2"
         finished += 1
 
@@ -118,16 +151,6 @@ def fetch_results():
         log("AVISO — nombres de equipo no reconocidos (revisa teams.py): "
             + ", ".join(sorted(unknown_names)))
     return results
-
-
-def _is_placeholder(name):
-    """True para los marcadores de posición de fase final: '1A', '2K', 'W73', 'L101', '3A/B/C/D/F'."""
-    n = name.strip()
-    if "/" in n:
-        return True
-    if len(n) <= 4 and any(c.isdigit() for c in n):
-        return True
-    return False
 
 
 def score(results):
