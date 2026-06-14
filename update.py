@@ -1,4 +1,178 @@
-<!DOCTYPE html>
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+update.py — corazón de la automatización.
+
+Hace:
+  1. Pide a API-Football los fixtures del Mundial 2026 (league=1, season=2026).
+  2. Casa cada fixture con uno de los 72 partidos de la quiniela (por los dos equipos).
+  3. Si el partido terminó, deduce el resultado 1/E/2 con el marcador final.
+  4. Recalcula los puntos de los 9 jugadores.
+  5. Reescribe index.html (marcador público de solo lectura).
+
+Diseño defensivo (estilo ASM):
+  - Si un equipo no se reconoce, lo reporta y NO inventa resultado.
+  - Solo cuenta partidos con status final (FT/AET/PEN). Los demás quedan pendientes.
+  - Loguea "casé X de Y fixtures" para detectar nombres raros al instante.
+  - Si la API falla, sale con error y NO sobreescribe el index.html bueno.
+"""
+
+import os
+import sys
+import json
+import datetime
+import urllib.request
+import urllib.error
+
+from teams import code_for, NOMBRE
+from picks import MATCHES, PICKS, PEN, PLAYERS
+
+API_BASE = "https://v3.football.api-sports.io"
+LEAGUE_ID = 1        # FIFA World Cup en API-Football
+SEASON = 2026
+# estados que consideramos "partido terminado" según la doc de API-Football
+FINISHED = {"FT", "AET", "PEN"}
+
+OUT = os.path.join(os.path.dirname(__file__), "index.html")
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def api_get(path):
+    key = os.environ.get("API_FOOTBALL_KEY")
+    if not key:
+        log("ERROR: falta la variable de entorno API_FOOTBALL_KEY (el secret del repo).")
+        sys.exit(1)
+    url = f"{API_BASE}{path}"
+    req = urllib.request.Request(url, headers={"x-apisports-key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        log(f"ERROR HTTP {e.code} al pedir {path}: {e.read()[:300]}")
+        sys.exit(1)
+    except Exception as e:
+        log(f"ERROR de red al pedir {path}: {e}")
+        sys.exit(1)
+    # API-Football mete los errores dentro del cuerpo, no en el status
+    if data.get("errors"):
+        log(f"ERROR de la API: {data['errors']}")
+        sys.exit(1)
+    return data.get("response", [])
+
+
+def build_index():
+    """índice {frozenset(codigoLocal, codigoVisita): posicion 0..71}"""
+    idx = {}
+    for i, m in enumerate(MATCHES):
+        idx[frozenset((m[3], m[4]))] = i
+    return idx
+
+
+def fetch_results():
+    """devuelve lista de 72: ''|'1'|'E'|'2'."""
+    results = [""] * 72
+    pos_by_pair = build_index()
+
+    fixtures = api_get(f"/fixtures?league={LEAGUE_ID}&season={SEASON}")
+    log(f"API devolvió {len(fixtures)} fixtures del Mundial.")
+
+    matched = 0
+    finished = 0
+    unknown_names = set()
+
+    for fx in fixtures:
+        try:
+            home_name = fx["teams"]["home"]["name"]
+            away_name = fx["teams"]["away"]["name"]
+            status = fx["fixture"]["status"]["short"]
+            gh = fx["goals"]["home"]
+            ga = fx["goals"]["away"]
+        except (KeyError, TypeError):
+            continue
+
+        ch = code_for(home_name)
+        ca = code_for(away_name)
+        if ch is None:
+            unknown_names.add(home_name)
+        if ca is None:
+            unknown_names.add(away_name)
+        if ch is None or ca is None:
+            continue
+
+        pos = pos_by_pair.get(frozenset((ch, ca)))
+        if pos is None:
+            # un partido de ese par que no está en nuestra hoja (no debería pasar en grupos)
+            continue
+        matched += 1
+
+        if status not in FINISHED or gh is None or ga is None:
+            continue  # aún no termina: lo dejamos pendiente
+
+        # ¿el equipo local de la API es el equipo local de NUESTRA hoja?
+        m = MATCHES[pos]
+        home_is_our_local = (ch == m[3])
+        if gh == ga:
+            results[pos] = "E"
+        else:
+            api_home_wins = gh > ga
+            our_local_wins = api_home_wins if home_is_our_local else (not api_home_wins)
+            results[pos] = "1" if our_local_wins else "2"
+        finished += 1
+
+    log(f"Casé {matched} de 72 partidos de la quiniela. Terminados con resultado: {finished}.")
+    if unknown_names:
+        log("AVISO — nombres de equipo no reconocidos (revisa teams.py): "
+            + ", ".join(sorted(unknown_names)))
+    return results
+
+
+def score(results):
+    played = sum(1 for r in results if r)
+    rows = []
+    for p in PLAYERS:
+        picks = PICKS[p]
+        pts = sum(1 for i, r in enumerate(results) if r and picks[i] == r)
+        rows.append({"p": p, "pts": pts, "errs": played - pts})
+    rows.sort(key=lambda x: (-x["pts"], x["errs"], x["p"]))
+    return rows, played
+
+
+def render_html(results, rows, played):
+    """genera el index.html completo, estático, con los datos ya incrustados."""
+    stamp = datetime.datetime.utcnow() - datetime.timedelta(hours=6)  # CDMX (UTC-6)
+    stamp_str = stamp.strftime("%d/%m/%Y %H:%M") + " (hora CDMX)"
+
+    data = {
+        "matches": MATCHES,
+        "picks": PICKS,
+        "pen": PEN,
+        "players": PLAYERS,
+        "nombre": NOMBRE,
+        "results": results,
+    }
+    data_json = json.dumps(data, ensure_ascii=False)
+
+    # plantilla: el HTML/JS del marcador de solo lectura
+    return TEMPLATE.replace("/*DATA*/", data_json).replace("__STAMP__", stamp_str)
+
+
+def main():
+    results = fetch_results()
+    rows, played = score(results)
+    log("Marcador actual:")
+    for i, r in enumerate(rows):
+        log(f"  {i+1}. {r['p']}: {r['pts']} pts ({r['errs']} err)")
+    html = render_html(results, rows, played)
+    with open(OUT, "w", encoding="utf-8") as f:
+        f.write(html)
+    log(f"index.html regenerado ({played}/72 partidos capturados).")
+
+
+# ===================== PLANTILLA HTML (solo lectura) =====================
+TEMPLATE = r"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -68,7 +242,7 @@
   <div class="sub">Fase de grupos · 9 analistas certificados · 72 partidos</div>
   <div><span class="badge-ro">📊 MARCADOR OFICIAL · SOLO LECTURA</span></div>
   <div class="pot">🏆 Bolsa <b>$2,700</b><span>1º $1,890 · 2º $540 · 3º $270</span></div>
-  <span class="stamp"><span class="live"></span>Actualizado automático: 13/06/2026 20:24 (hora CDMX)</span>
+  <span class="stamp"><span class="live"></span>Actualizado automático: __STAMP__</span>
 </header>
 <main>
   <section id="view-tabla"></section>
@@ -79,7 +253,7 @@
   <button id="tab-picks" onclick="show('picks')"><span class="ico">📋</span>Picks</button>
 </nav>
 <script>
-const DATA = {"matches": [[1, "11/06", "13:00", "MEX", "SUD"], [1, "11/06", "20:00", "CDS", "CHE"], [1, "12/06", "13:00", "CAN", "BOS"], [1, "12/06", "19:00", "EUA", "PAR"], [2, "13/06", "13:00", "QAT", "SUI"], [2, "13/06", "16:00", "BRA", "MAR"], [2, "13/06", "19:00", "HAI", "ESC"], [2, "13/06", "22:00", "AUS", "TUR"], [3, "14/06", "11:00", "ALE", "CUR"], [3, "14/06", "14:00", "HOL", "JPN"], [3, "14/06", "17:00", "CDM", "ECU"], [3, "14/06", "20:00", "SUE", "TUN"], [4, "15/06", "10:00", "ESP", "CAB"], [4, "15/06", "13:00", "BEL", "EGP"], [4, "15/06", "16:00", "ARA", "URU"], [4, "15/06", "19:00", "IRN", "NZL"], [5, "16/06", "13:00", "FRA", "SEN"], [5, "16/06", "16:00", "IRK", "NOR"], [5, "16/06", "19:00", "ARG", "ARL"], [5, "16/06", "22:00", "AUT", "JOR"], [6, "17/06", "11:00", "POR", "CON"], [6, "17/06", "14:00", "ING", "CRO"], [6, "17/06", "17:00", "GHA", "PAN"], [6, "17/06", "20:00", "UZB", "COL"], [7, "18/06", "10:00", "CHE", "SUD"], [7, "18/06", "13:00", "SUI", "BOS"], [7, "18/06", "16:00", "CAN", "QAT"], [7, "18/06", "19:00", "MEX", "CDS"], [8, "19/06", "13:00", "EUA", "AUS"], [8, "19/06", "16:00", "ESC", "MAR"], [8, "19/06", "18:30", "BRA", "HAI"], [8, "19/06", "21:00", "TUR", "PAR"], [9, "20/06", "11:00", "HOL", "SUE"], [9, "20/06", "14:00", "ALE", "CDM"], [9, "20/06", "18:00", "ECU", "CUR"], [9, "20/06", "22:00", "TUN", "JPN"], [10, "21/06", "10:00", "ESP", "ARA"], [10, "21/06", "13:00", "BEL", "IRN"], [10, "21/06", "16:00", "URU", "CAB"], [10, "21/06", "19:00", "NZL", "EGP"], [11, "22/06", "11:00", "ARG", "AUT"], [11, "22/06", "15:00", "FRA", "IRK"], [11, "22/06", "18:00", "NOR", "SEN"], [11, "22/06", "21:00", "JOR", "ARL"], [12, "23/06", "11:00", "POR", "UZB"], [12, "23/06", "14:00", "ING", "GHA"], [12, "23/06", "17:00", "PAN", "CRO"], [12, "23/06", "20:00", "COL", "CON"], [13, "24/06", "13:00", "SUI", "CAN"], [13, "24/06", "13:00", "BOS", "QAT"], [13, "24/06", "16:00", "ESC", "BRA"], [13, "24/06", "16:00", "MAR", "HAI"], [13, "24/06", "19:00", "CHE", "MEX"], [13, "24/06", "19:00", "SUD", "CDS"], [14, "25/06", "14:00", "CUR", "CDM"], [14, "25/06", "14:00", "ECU", "ALE"], [14, "25/06", "17:00", "JPN", "SUE"], [14, "25/06", "17:00", "TUN", "HOL"], [14, "25/06", "20:00", "TUR", "EUA"], [14, "25/06", "20:00", "PAR", "AUS"], [15, "26/06", "13:00", "NOR", "FRA"], [15, "26/06", "13:00", "SEN", "IRK"], [15, "26/06", "18:00", "CAB", "ARA"], [15, "26/06", "18:00", "URU", "ESP"], [15, "26/06", "21:00", "EGP", "IRN"], [15, "26/06", "21:00", "NZL", "BEL"], [16, "27/06", "15:00", "PAN", "ING"], [16, "27/06", "15:00", "CRO", "GHA"], [16, "27/06", "17:30", "COL", "POR"], [16, "27/06", "17:30", "CON", "UZB"], [16, "27/06", "20:00", "ARL", "AUT"], [16, "27/06", "20:00", "JOR", "ARG"]], "picks": {"Aaron": "1E1121E21111112E121111E2111112111112111E11121121EE21222222EEE12E12212E12", "Edgar": "111121221121112E12111E22E11112111112111211E211211221222222EE2122E2212222", "Emiliano": "1E112122112111221211112211111211111211111112111111212222222221EE11212E22", "Ferrer": "1E11212111E11122121111E211111211E1121112111E11211E2121E222E121221221EE22", "Jorge": "111121221EE11121121111121111121111121112111211212121222E1221E1E21221EEE2", "Kaleb": "111E2222122E112112111E121111121E1112111211E211211E212222222E2122E2212122", "Luis": "1112222211E1112112111112111E121E1212111211121121EE21222112E121E222212222", "Randy": "1E11212211111121121111E211111E111112111211121121E1212222E2E121EE222EEE22", "Rosete": "1EE1212211211121121111121111121121121112E112111121212211121E11EE12212222"}, "pen": {"Aaron": "#ef4444", "Edgar": "#3b82f6", "Emiliano": "#a8b3bd", "Ferrer": "#f97316", "Jorge": "#efc15c", "Kaleb": "#22d3ee", "Luis": "#818cf8", "Randy": "#34d399", "Rosete": "#e879f9"}, "players": ["Aaron", "Edgar", "Emiliano", "Ferrer", "Jorge", "Kaleb", "Luis", "Randy", "Rosete"], "nombre": {"MEX": "México", "SUD": "Sudáfrica", "CDS": "Corea del Sur", "CHE": "Chequia", "CAN": "Canadá", "BOS": "Bosnia", "EUA": "EUA", "PAR": "Paraguay", "QAT": "Qatar", "SUI": "Suiza", "BRA": "Brasil", "MAR": "Marruecos", "HAI": "Haití", "ESC": "Escocia", "AUS": "Australia", "TUR": "Turquía", "ALE": "Alemania", "CUR": "Curazao", "HOL": "Países Bajos", "JPN": "Japón", "CDM": "Costa de Marfil", "ECU": "Ecuador", "SUE": "Suecia", "TUN": "Túnez", "ESP": "España", "CAB": "Cabo Verde", "BEL": "Bélgica", "EGP": "Egipto", "ARA": "Arabia Saudita", "URU": "Uruguay", "IRN": "Irán", "NZL": "Nueva Zelanda", "FRA": "Francia", "SEN": "Senegal", "IRK": "Irak", "NOR": "Noruega", "ARG": "Argentina", "ARL": "Argelia", "AUT": "Austria", "JOR": "Jordania", "POR": "Portugal", "CON": "RD Congo", "ING": "Inglaterra", "CRO": "Croacia", "GHA": "Ghana", "PAN": "Panamá", "UZB": "Uzbekistán", "COL": "Colombia"}, "results": ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]};
+const DATA = /*DATA*/;
 const M = DATA.matches, PICKS = DATA.picks, PEN = DATA.pen, PLAYERS = DATA.players, NOM = DATA.nombre, RES = DATA.results;
 let cur = 0;
 function scores(){
@@ -126,4 +300,8 @@ function show(v){ ['tabla','picks'].forEach(function(x){ document.getElementById
 renderTabla(); renderPicks();
 </script>
 </body>
-</html>
+</html>"""
+
+
+if __name__ == "__main__":
+    main()
