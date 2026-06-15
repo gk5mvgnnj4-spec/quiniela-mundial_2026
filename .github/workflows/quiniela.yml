@@ -40,7 +40,12 @@ jobs:
           if [[ -n "$(git status --porcelain index.html)" ]]; then
             git add index.html
             git commit -m "Marcador actualizado: $(date -u '+%Y-%m-%d %H:%M UTC')"
-            git push
+            # Reintenta el push integrando cambios remotos, por si otra corrida pusheó primero
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "Reintento de push ($i)..."
+              sleep 5
+            done
             echo "Marcador actualizado y publicado."
           else
             echo "Sin cambios en el marcador."
