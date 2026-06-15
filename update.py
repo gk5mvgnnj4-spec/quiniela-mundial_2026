@@ -183,12 +183,34 @@ def render_html(results, rows, played):
     return TEMPLATE.replace("/*DATA*/", data_json).replace("__STAMP__", stamp_str)
 
 
+def _current_results():
+    """lee los resultados ya incrustados en el index.html actual (o None si no existe)."""
+    try:
+        with open(OUT, "r", encoding="utf-8") as f:
+            html = f.read()
+        import re
+        m = re.search(r"const DATA = (\{.*?\});", html, re.S)
+        if not m:
+            return None
+        return json.loads(m.group(1)).get("results")
+    except Exception:
+        return None
+
+
 def main():
     results = fetch_results()
     rows, played = score(results)
     log("Marcador actual:")
     for i, r in enumerate(rows):
         log(f"  {i+1}. {r['p']}: {r['pts']} pts ({r['errs']} err)")
+
+    # Solo reescribimos si los RESULTADOS cambiaron (ignoramos el sello de hora).
+    # Esto evita un commit cada 30 min cuando no hay partidos nuevos, y con ello
+    # los choques de push entre corridas.
+    if _current_results() == results:
+        log("Sin cambios en los resultados: no se reescribe index.html.")
+        return
+
     html = render_html(results, rows, played)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html)
