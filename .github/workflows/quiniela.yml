@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Clonar repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Instalar Python
         uses: actions/setup-python@v5
@@ -37,16 +39,22 @@ jobs:
         run: |
           git config user.name  "marcador-bot"
           git config user.email "actions@github.com"
-          if [[ -n "$(git status --porcelain index.html)" ]]; then
-            git add index.html
-            git commit -m "Marcador actualizado: $(date -u '+%Y-%m-%d %H:%M UTC')"
-            # Reintenta el push integrando cambios remotos, por si otra corrida pusheó primero
-            for i in 1 2 3; do
-              git pull --rebase origin main && git push && break
-              echo "Reintento de push ($i)..."
-              sleep 5
-            done
-            echo "Marcador actualizado y publicado."
-          else
+          if [[ -z "$(git status --porcelain index.html)" ]]; then
             echo "Sin cambios en el marcador."
+            exit 0
           fi
+          git add index.html
+          git commit -m "Marcador actualizado: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          # Push con reintentos: si otra corrida pusheó primero, integra y reintenta.
+          for i in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "Marcador publicado en el intento $i."
+              exit 0
+            fi
+            echo "Push rechazado (intento $i). Integrando cambios remotos..."
+            git fetch origin main
+            git rebase --autostash origin/main || git rebase --abort
+            sleep 5
+          done
+          echo "ERROR: no se pudo publicar tras 5 intentos."
+          exit 1
