@@ -1,1 +1,129 @@
-
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Quiniela Mundial 2026 · Marcador</title>
+<style>
+  :root{--bg:#0d2014;--panel:#143122;--panel2:#1b3f2c;--line:rgba(240,236,222,.13);--ink:#f0ecde;--muted:#94ab9a;--gold:#efc15c;--ok:#6fd08c;--bad:#e96a5b;--chalk:rgba(240,236,222,.55)}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{font-size:16px}
+  body{background:var(--bg);color:var(--ink);min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background-image:radial-gradient(ellipse 120% 60% at 50% -10%, rgba(239,193,92,.08), transparent 60%),repeating-linear-gradient(90deg, transparent 0 64px, rgba(255,255,255,.018) 64px 128px);padding-bottom:90px}
+  header{padding:18px 16px 12px;text-align:center;position:relative;border-bottom:2px solid var(--line)}
+  header::after{content:"";position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);width:84px;height:10px;border:2px solid var(--chalk);border-top:none;border-radius:0 0 8px 8px;opacity:.5}
+  h1{font-size:1.35rem;letter-spacing:.06em;text-transform:uppercase;font-weight:900;line-height:1.15}
+  h1 .gold{color:var(--gold)}
+  .sub{color:var(--muted);font-size:.78rem;margin-top:4px;letter-spacing:.04em}
+  .badge-ro{display:inline-block;margin-top:8px;font-size:.64rem;font-weight:900;letter-spacing:.14em;color:#0d2014;background:var(--muted);border-radius:5px;padding:3px 8px}
+  .pot{display:inline-flex;gap:14px;margin-top:10px;padding:6px 14px;border:1px solid var(--line);border-radius:999px;font-size:.74rem;color:var(--muted);background:rgba(0,0,0,.18)}
+  .pot b{color:var(--gold);font-weight:800}
+  .stamp{display:block;margin-top:8px;font-size:.68rem;color:var(--muted)}
+  .live{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:5px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:50;display:flex;background:#0a1a10ee;backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 8px calc(8px + env(safe-area-inset-bottom))}
+  nav button{flex:1;background:none;border:none;color:var(--muted);font:inherit;font-size:.78rem;font-weight:700;padding:9px 4px;border-radius:12px;cursor:pointer;letter-spacing:.02em}
+  nav button .ico{display:block;font-size:1.15rem;margin-bottom:2px}
+  nav button.on{color:var(--gold);background:rgba(239,193,92,.10)}
+  main{max-width:680px;margin:0 auto;padding:14px 12px}
+  .hidden{display:none}
+  .progress-note{font-size:.78rem;color:var(--muted);text-align:center;margin-bottom:12px}
+  .progress-note b{color:var(--ink)}
+  .rowP{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:8px;position:relative;overflow:hidden}
+  .rowP.lead{border-color:rgba(239,193,92,.55);background:linear-gradient(180deg, rgba(239,193,92,.10), var(--panel))}
+  .rank{width:26px;text-align:center;font-weight:900;font-size:1rem;color:var(--muted);flex:none}
+  .rowP.lead .rank{color:var(--gold)}
+  .pdot{width:10px;height:10px;border-radius:50%;flex:none}
+  .pname{font-weight:800;font-size:.95rem;flex:1;min-width:0}
+  .pname small{display:block;font-weight:600;color:var(--muted);font-size:.7rem;margin-top:2px}
+  .pname small .hit{color:var(--ok)} .pname small .miss{color:var(--bad)}
+  .ppts{font-size:1.5rem;font-weight:900;color:var(--gold);flex:none;line-height:1}
+  .ppts small{display:block;font-size:.6rem;color:var(--muted);font-weight:700;text-align:right;letter-spacing:.06em}
+  .pbar{position:absolute;left:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--gold),#f7e3ae);transition:width .5s ease}
+  .prize{font-size:.66rem;font-weight:800;color:#0d2014;background:var(--gold);border-radius:6px;padding:2px 6px;flex:none}
+  .prize.p2{background:#cfd6cd} .prize.p3{background:#d9a05b}
+  .tiebreak{font-size:.7rem;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5}
+  .selwrap{position:relative;margin-bottom:10px}
+  select{width:100%;appearance:none;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px 38px 12px 12px;font:inherit;font-size:.85rem;font-weight:700}
+  .selwrap::after{content:"▾";position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+  .navmatch{display:flex;gap:8px;margin-bottom:12px}
+  .navmatch button{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:9px;font:inherit;font-weight:800;font-size:.8rem;cursor:pointer}
+  .bigmatch{text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 10px;margin-bottom:12px}
+  .bigmatch .vs{font-size:1.05rem;font-weight:900;letter-spacing:.02em}
+  .bigmatch .meta{font-size:.7rem;color:var(--muted);margin-top:4px}
+  .bigmatch .resline{margin-top:8px;font-size:.78rem;font-weight:800;color:var(--gold)}
+  .bigmatch .resline.none{color:var(--muted);font-weight:600}
+  .pickrow{display:flex;align-items:center;gap:10px;padding:9px 10px;border-bottom:1px solid var(--line)}
+  .pickrow:last-child{border-bottom:none}
+  .pickrows{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .pickrow .nm{flex:1;font-weight:700;font-size:.88rem;display:flex;align-items:center;gap:8px}
+  .pickchip{min-width:96px;text-align:center;border-radius:9px;padding:6px 8px;font-size:.76rem;font-weight:900;background:var(--panel2);border:1.5px solid var(--line);letter-spacing:.02em}
+  .pickchip.hit{border-color:var(--ok);color:var(--ok);background:rgba(111,208,140,.1)}
+  .pickchip.miss{border-color:var(--bad);color:var(--bad);background:rgba(233,106,91,.08);opacity:.85}
+  .note{font-size:.7rem;color:var(--muted);line-height:1.5;margin-top:10px;padding:0 4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Quiniela <span class="gold">Mundial 2026</span></h1>
+  <div class="sub">Fase de grupos · 9 analistas certificados · 72 partidos</div>
+  <div><span class="badge-ro">📊 MARCADOR OFICIAL · SOLO LECTURA</span></div>
+  <div class="pot">🏆 Bolsa <b>$2,700</b><span>1º $1,890 · 2º $540 · 3º $270</span></div>
+  <span class="stamp"><span class="live"></span>Actualizado automático: 18/06/2026 22:45 (hora CDMX)</span>
+</header>
+<main>
+  <section id="view-tabla"></section>
+  <section id="view-picks" class="hidden"></section>
+</main>
+<nav>
+  <button id="tab-tabla" class="on" onclick="show('tabla')"><span class="ico">🏆</span>Tabla</button>
+  <button id="tab-picks" onclick="show('picks')"><span class="ico">📋</span>Picks</button>
+</nav>
+<script>
+const DATA = {"matches": [[1, "11/06", "13:00", "MEX", "SUD"], [1, "11/06", "20:00", "CDS", "CHE"], [1, "12/06", "13:00", "CAN", "BOS"], [1, "12/06", "19:00", "EUA", "PAR"], [2, "13/06", "13:00", "QAT", "SUI"], [2, "13/06", "16:00", "BRA", "MAR"], [2, "13/06", "19:00", "HAI", "ESC"], [2, "13/06", "22:00", "AUS", "TUR"], [3, "14/06", "11:00", "ALE", "CUR"], [3, "14/06", "14:00", "HOL", "JPN"], [3, "14/06", "17:00", "CDM", "ECU"], [3, "14/06", "20:00", "SUE", "TUN"], [4, "15/06", "10:00", "ESP", "CAB"], [4, "15/06", "13:00", "BEL", "EGP"], [4, "15/06", "16:00", "ARA", "URU"], [4, "15/06", "19:00", "IRN", "NZL"], [5, "16/06", "13:00", "FRA", "SEN"], [5, "16/06", "16:00", "IRK", "NOR"], [5, "16/06", "19:00", "ARG", "ARL"], [5, "16/06", "22:00", "AUT", "JOR"], [6, "17/06", "11:00", "POR", "CON"], [6, "17/06", "14:00", "ING", "CRO"], [6, "17/06", "17:00", "GHA", "PAN"], [6, "17/06", "20:00", "UZB", "COL"], [7, "18/06", "10:00", "CHE", "SUD"], [7, "18/06", "13:00", "SUI", "BOS"], [7, "18/06", "16:00", "CAN", "QAT"], [7, "18/06", "19:00", "MEX", "CDS"], [8, "19/06", "13:00", "EUA", "AUS"], [8, "19/06", "16:00", "ESC", "MAR"], [8, "19/06", "18:30", "BRA", "HAI"], [8, "19/06", "21:00", "TUR", "PAR"], [9, "20/06", "11:00", "HOL", "SUE"], [9, "20/06", "14:00", "ALE", "CDM"], [9, "20/06", "18:00", "ECU", "CUR"], [9, "20/06", "22:00", "TUN", "JPN"], [10, "21/06", "10:00", "ESP", "ARA"], [10, "21/06", "13:00", "BEL", "IRN"], [10, "21/06", "16:00", "URU", "CAB"], [10, "21/06", "19:00", "NZL", "EGP"], [11, "22/06", "11:00", "ARG", "AUT"], [11, "22/06", "15:00", "FRA", "IRK"], [11, "22/06", "18:00", "NOR", "SEN"], [11, "22/06", "21:00", "JOR", "ARL"], [12, "23/06", "11:00", "POR", "UZB"], [12, "23/06", "14:00", "ING", "GHA"], [12, "23/06", "17:00", "PAN", "CRO"], [12, "23/06", "20:00", "COL", "CON"], [13, "24/06", "13:00", "SUI", "CAN"], [13, "24/06", "13:00", "BOS", "QAT"], [13, "24/06", "16:00", "ESC", "BRA"], [13, "24/06", "16:00", "MAR", "HAI"], [13, "24/06", "19:00", "CHE", "MEX"], [13, "24/06", "19:00", "SUD", "CDS"], [14, "25/06", "14:00", "CUR", "CDM"], [14, "25/06", "14:00", "ECU", "ALE"], [14, "25/06", "17:00", "JPN", "SUE"], [14, "25/06", "17:00", "TUN", "HOL"], [14, "25/06", "20:00", "TUR", "EUA"], [14, "25/06", "20:00", "PAR", "AUS"], [15, "26/06", "13:00", "NOR", "FRA"], [15, "26/06", "13:00", "SEN", "IRK"], [15, "26/06", "18:00", "CAB", "ARA"], [15, "26/06", "18:00", "URU", "ESP"], [15, "26/06", "21:00", "EGP", "IRN"], [15, "26/06", "21:00", "NZL", "BEL"], [16, "27/06", "15:00", "PAN", "ING"], [16, "27/06", "15:00", "CRO", "GHA"], [16, "27/06", "17:30", "COL", "POR"], [16, "27/06", "17:30", "CON", "UZB"], [16, "27/06", "20:00", "ARL", "AUT"], [16, "27/06", "20:00", "JOR", "ARG"]], "picks": {"Aaron": "1E1121E21111112E121111E2111112111112111E11121121EE21222222EEE12E12212E12", "Edgar": "111121221121112E12111E22E11112111112111211E211211221222222EE2122E2212222", "Emiliano": "1E112122112111221211112211111211111211111112111111212222222221EE11212E22", "Ferrer": "1E11212111E11122121111E211111211E1121112111E11211E2121E222E121221221EE22", "Jorge": "111121221EE11121121111121111121111121112111211212121222E1221E1E21221EEE2", "Kaleb": "111E2222122E112112111E121111121E1112111211E211211E212222222E2122E2212122", "Luis": "1112222211E11121121111121111121E1212111211121121EE21222112E121E222212222", "Randy": "1E11212211111121121111E211111E111112111211121121E1212222E2E121EE222EEE22", "Rosete": "1EE1212211211121121111121111121121121112E112111121212211121E11EE12212222"}, "pen": {"Aaron": "#ef4444", "Edgar": "#3b82f6", "Emiliano": "#a8b3bd", "Ferrer": "#f97316", "Jorge": "#efc15c", "Kaleb": "#22d3ee", "Luis": "#818cf8", "Randy": "#34d399", "Rosete": "#e879f9"}, "players": ["Aaron", "Edgar", "Emiliano", "Ferrer", "Jorge", "Kaleb", "Luis", "Randy", "Rosete"], "nombre": {"MEX": "México", "SUD": "Sudáfrica", "CDS": "Corea del Sur", "CHE": "Chequia", "CAN": "Canadá", "BOS": "Bosnia", "EUA": "EUA", "PAR": "Paraguay", "QAT": "Qatar", "SUI": "Suiza", "BRA": "Brasil", "MAR": "Marruecos", "HAI": "Haití", "ESC": "Escocia", "AUS": "Australia", "TUR": "Turquía", "ALE": "Alemania", "CUR": "Curazao", "HOL": "Países Bajos", "JPN": "Japón", "CDM": "Costa de Marfil", "ECU": "Ecuador", "SUE": "Suecia", "TUN": "Túnez", "ESP": "España", "CAB": "Cabo Verde", "BEL": "Bélgica", "EGP": "Egipto", "ARA": "Arabia Saudita", "URU": "Uruguay", "IRN": "Irán", "NZL": "Nueva Zelanda", "FRA": "Francia", "SEN": "Senegal", "IRK": "Irak", "NOR": "Noruega", "ARG": "Argentina", "ARL": "Argelia", "AUT": "Austria", "JOR": "Jordania", "POR": "Portugal", "CON": "RD Congo", "ING": "Inglaterra", "CRO": "Croacia", "GHA": "Ghana", "PAN": "Panamá", "UZB": "Uzbekistán", "COL": "Colombia"}, "results": ["1", "1", "E", "1", "E", "E", "2", "1", "1", "E", "1", "1", "E", "E", "E", "E", "1", "2", "1", "1", "E", "1", "1", "2", "E", "1", "1", "1", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]};
+const M = DATA.matches, PICKS = DATA.picks, PEN = DATA.pen, PLAYERS = DATA.players, NOM = DATA.nombre, RES = DATA.results;
+let cur = 0;
+function scores(){
+  let played = RES.filter(function(r){return r;}).length;
+  let rows = PLAYERS.map(function(p){
+    let pts=0; RES.forEach(function(r,i){ if(r && PICKS[p][i]===r) pts++; });
+    return {p:p, pts:pts, errs:played-pts};
+  });
+  rows.sort(function(a,b){ return b.pts-a.pts || a.errs-b.errs || a.p.localeCompare(b.p); });
+  return {rows:rows, played:played};
+}
+function renderTabla(){
+  let s = scores();
+  let html = '<div class="progress-note">Partidos capturados: <b>'+s.played+' / 72</b></div>';
+  s.rows.forEach(function(r,i){
+    let lead = (i===0 && s.played>0);
+    let prize = s.played>0 ? (i===0?'<span class="prize">$1,890</span>': i===1?'<span class="prize p2">$540</span>': i===2?'<span class="prize p3">$270</span>':'') : '';
+    let pct = s.played ? (r.pts/s.played*100) : 0;
+    html += '<div class="rowP'+(lead?' lead':'')+'"><div class="rank">'+((i===0&&s.played>0)?'👑':(i+1))+'</div><span class="pdot" style="background:'+PEN[r.p]+'"></span><div class="pname">'+r.p+'<small><span class="hit">✓ '+r.pts+' aciertos</span> · <span class="miss">✗ '+r.errs+' errores</span></small></div>'+prize+'<div class="ppts">'+r.pts+'<small>PTS</small></div><div class="pbar" style="width:'+pct+'%"></div></div>';
+  });
+  html += '<div class="tiebreak">Desempate oficial: 1) menor número de errores · 2) mayor cantidad de aciertos · 3) sorteo<br>Bolsa total $2,700 (9 × $300) · 70% / 20% / 10%</div>';
+  document.getElementById('view-tabla').innerHTML = html;
+}
+function renderPicks(){
+  let m = M[cur], r = RES[cur];
+  let opts = M.map(function(x,i){ return '<option value="'+i+'"'+(i===cur?' selected':'')+'>J'+x[0]+' · '+x[1]+' — '+NOM[x[3]]+' vs '+NOM[x[4]]+'</option>'; }).join('');
+  let rows = '';
+  PLAYERS.forEach(function(p){
+    let pk = PICKS[p][cur];
+    let label = pk==='E' ? 'EMPATE' : NOM[pk==='1'?m[3]:m[4]];
+    let cls = r ? (pk===r?'hit':'miss') : '';
+    rows += '<div class="pickrow"><div class="nm"><span class="pdot" style="background:'+PEN[p]+'"></span>'+p+'</div><div class="pickchip '+cls+'">'+label+'</div></div>';
+  });
+  let resline = r ? ('Resultado: ' + (r==='E'?'Empate':'Ganó '+NOM[r==='1'?m[3]:m[4]])) : 'Resultado pendiente';
+  document.getElementById('view-picks').innerHTML =
+    '<div class="selwrap"><select onchange="goMatch(this.value)">'+opts+'</select></div>'+
+    '<div class="navmatch"><button onclick="goMatch('+((cur+71)%72)+')">‹ Anterior</button><button onclick="goMatch('+((cur+1)%72)+')">Siguiente ›</button></div>'+
+    '<div class="bigmatch"><div class="vs">'+NOM[m[3]]+' vs '+NOM[m[4]]+'</div><div class="meta">Jornada '+m[0]+' · '+m[1]+'/2026 · '+m[2]+' h</div><div class="resline '+(r?'':'none')+'">'+resline+'</div></div>'+
+    '<div class="pickrows">'+rows+'</div>'+
+    '<div class="note">Marcador de solo lectura, actualizado automáticamente con los resultados oficiales. Si crees que un pick tuyo está mal transcrito de tu hoja, dile a Jorge.</div>';
+}
+function goMatch(i){ cur=+i; renderPicks(); }
+function show(v){ ['tabla','picks'].forEach(function(x){ document.getElementById('view-'+x).classList.toggle('hidden',x!==v); document.getElementById('tab-'+x).classList.toggle('on',x===v); }); window.scrollTo({top:0}); }
+renderTabla(); renderPicks();
+</script>
+</body>
+</html>
